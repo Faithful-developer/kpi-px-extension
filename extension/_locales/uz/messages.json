@@ -1,0 +1,7 @@
+{
+  "extName": { "message": "KPI px", "description": "Extension name in the toolbar and the store listing." },
+  "extDescription": {
+    "message": "Qoʻllab-quvvatlash jamoasining KPI reytingi asboblar panelida — hamma va ular orasida siz.",
+    "description": "Store listing description."
+  }
+}

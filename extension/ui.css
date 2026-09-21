@@ -1,0 +1,369 @@
+/* The dashboard's bento tokens, cut down to what a 340 px panel uses.
+   Values are copied from src/theme.css — light is a warm mid-light grey with a
+   terracotta accent (never bright: large neutral areas must not glare), dark is
+   near-black with a violet accent. The two blocks below are identical by
+   design; edit both. */
+:root {
+  color-scheme: light dark;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+
+  --page: #e9e7e2;
+  --surface-1: #f7f6f3;
+  --surface-2: #eeece7;
+  --surface-3: #e3e0da;
+  --text-primary: #16140f;
+  --text-secondary: #4d4a44;
+  --text-muted: #5f5b53;
+  --border: rgba(22, 20, 15, 0.1);
+  --border-strong: rgba(22, 20, 15, 0.18);
+
+  --accent: #d5623d;
+  --accent-fill: #c4522f;
+  --accent-text: #a83f1e;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface-1));
+  --gold: #a8761e;
+  --danger-text: #a3352b;
+  --success-text: #006300;
+
+  --radius: 18px;
+  --radius-sm: 12px;
+  --radius-pill: 999px;
+  --shadow: 0 1px 2px rgba(20, 18, 14, 0.04), 0 10px 30px rgba(20, 18, 14, 0.06);
+  --display-weight: 600;
+  --display-tracking: -0.03em;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0b0b0f;
+    --surface-1: #15151b;
+    --surface-2: #1c1c24;
+    --surface-3: #26262f;
+    --text-primary: #f2f1f7;
+    --text-secondary: #b6b4c2;
+    --text-muted: #9391a0;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+
+    --accent: #8b7cf6;
+    --accent-fill: #6a5ae0;
+    --accent-text: #a89cff;
+    --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--surface-1));
+    --gold: #d2a24c;
+    --danger-text: #ff8a7a;
+    --success-text: #0ca30c;
+
+    --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--page);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.popup {
+  /* NO fixed height. Chrome caps a popup at 600 device-independent pixels, so
+     a hard max-height in CSS px is wrong the moment the browser is zoomed —
+     at 140 % the cap is ~428 CSS px and a 580 px panel simply loses its
+     footer. The page instead flows at its natural height, the viewport does
+     the scrolling, and the header and footer stay put with `sticky`. */
+  width: 400px;
+  margin: 0;
+}
+
+/* ── Header (sticky) ────────────────────────────────────────────────── */
+.top {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--page); padding: 12px 14px 10px;
+  display: grid; gap: 10px;
+}
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.bar__title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.bar__mark {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent-text);
+}
+.bar__period {
+  font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bar__actions { display: flex; gap: 6px; flex: none; }
+
+.icon-btn {
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary);
+  width: 28px; height: 28px; border-radius: var(--radius-pill); cursor: pointer;
+  font-size: 13px; line-height: 1; display: grid; place-items: center; padding: 0;
+}
+.icon-btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.icon-btn[data-busy='1'] { opacity: 0.5; pointer-events: none; }
+
+/* ── Range pills ────────────────────────────────────────────────────── */
+.pills {
+  display: flex; gap: 2px; padding: 3px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill);
+}
+.pill {
+  flex: 1; border: 0; background: transparent; color: var(--text-secondary);
+  border-radius: var(--radius-pill); padding: 6px 0; font-size: 12px; cursor: pointer;
+  font-family: inherit;
+}
+.pill:hover { color: var(--text-primary); }
+.pill[aria-pressed='true'] { background: var(--accent-fill); color: #fff; font-weight: 600; }
+
+/* ── Content ────────────────────────────────────────────────────────── */
+#body { padding: 0 14px; display: grid; gap: 12px; align-content: start; }
+/* A grid item's min-width is `auto`, i.e. its MIN-CONTENT — so one long word
+   anywhere inside pushes the whole panel wider than the popup and Chrome adds
+   a horizontal scrollbar. Measured: the tiles row alone forced 410 px inside a
+   400 px panel. Every track that may hold text is pinned to minmax(0, …). */
+#body > * { min-width: 0; }
+
+/* ── Team tiles ─────────────────────────────────────────────────────── */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.tile {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 8px 9px 9px; display: grid; gap: 2px; align-content: start;
+}
+.tile__label {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tile__value {
+  font-size: 18px; font-weight: var(--display-weight); letter-spacing: var(--display-tracking);
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* The sample/context line is PRINTED, not hidden in a title tooltip: a native
+   tooltip in a 400 px panel covers the very thing it describes. */
+.tile__hint {
+  font-size: 9.5px; color: var(--text-muted); line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Your own card ──────────────────────────────────────────────────── */
+.mine {
+  background: var(--surface-1); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 15px 14px;
+  /* The one accent edge on the panel — it marks WHOSE card this is, which no
+     number in it can say on its own. */
+  border-left: 3px solid var(--accent);
+  display: grid; gap: 9px;
+}
+.mine__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mine__who { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; row-gap: 6px; }
+.mine__name {
+  font-size: 14px; font-weight: 600; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mine__score { display: flex; align-items: baseline; gap: 5px; flex: none; }
+.mine__meta {
+  margin: 0; display: flex; flex-wrap: wrap; gap: 5px; line-height: 1.5;
+  font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.mine__stat { color: var(--text-secondary); }
+
+.tag {
+  background: var(--accent-soft); color: var(--accent-text); border-radius: var(--radius-pill);
+  padding: 3px 8px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+}
+.rank {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  background: var(--surface-2); color: var(--text-secondary);
+  border-radius: var(--radius-pill); padding: 3px 10px; font-size: 12px; font-weight: 600;
+}
+.rank--gold { background: color-mix(in srgb, var(--gold) 16%, var(--surface-1)); color: var(--gold); }
+.rank--jump { border: 0; font-family: inherit; cursor: pointer; }
+.rank--jump:hover { background: var(--surface-3); color: var(--text-primary); }
+.rank__go { opacity: 0.5; font-weight: 400; }
+.rank__of { color: var(--text-muted); font-weight: 400; }
+.score {
+  font-size: 28px; font-weight: var(--display-weight); letter-spacing: var(--display-tracking);
+  line-height: 1; font-variant-numeric: tabular-nums;
+}
+.score__unit { font-size: 12px; color: var(--text-muted); }
+
+/* ── Criteria ───────────────────────────────────────────────────────── */
+.crit { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; }
+.crit__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; align-items: baseline; }
+.crit__label { color: var(--text-secondary); font-size: 12px; }
+.crit__value { font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.crit__bar {
+  grid-column: 1 / -1; height: 4px; border-radius: var(--radius-pill);
+  background: var(--surface-3); overflow: hidden;
+}
+/* display:block is load-bearing — the track is blockified for free as a grid
+   item, but the fill is a plain span inside it, and width/height on an inline
+   box do nothing: the bar renders as an empty groove. */
+.crit__fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.crit__meta { grid-column: 1 / -1; font-size: 10.5px; color: var(--text-muted); margin-top: -2px; }
+.crit--na { opacity: 0.55; }
+.crit--na .crit__fill { background: var(--text-muted); }
+
+/* ── The board ──────────────────────────────────────────────────────── */
+.board { display: grid; gap: 7px; }
+.board__head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted);
+  padding: 0 12px 1px;
+}
+
+.op { border-radius: var(--radius-sm); }
+.op__line {
+  /* `color` is explicit because a <button> otherwise inherits the UA's
+     `buttontext`, which follows the SYSTEM theme, not the page's — on a
+     dark-mode machine the score rendered white on the light surface. */
+  width: 100%; text-align: left; font: inherit; color: var(--text-primary); cursor: pointer;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 11px 12px 12px;
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto;
+  column-gap: 10px; row-gap: 8px; align-items: center;
+}
+.op__line:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.op__rank {
+  font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+  text-align: center; line-height: 1;
+}
+.op__name {
+  color: var(--text-primary); font-size: 13.5px; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.op__name--unnamed { color: var(--text-muted); font-style: italic; }
+.op__score {
+  font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+  letter-spacing: var(--display-tracking);
+}
+.op__bar {
+  grid-column: 2 / -1; height: 4px; border-radius: var(--radius-pill);
+  background: var(--surface-3); overflow: hidden; margin-top: -2px;
+}
+/* One hue for every operator. The bar encodes the score, and the score already
+   encodes the rank — a per-place colour would add nothing and would repaint
+   the survivors every time the range changes the field. */
+.op__fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.op__meta {
+  grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 5px; margin-top: -3px;
+  font-size: 10.5px; line-height: 1.4; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.op__dot { opacity: 0.45; }
+.op__flag { color: var(--gold); }
+
+.op--mine > .op__line {
+  background: var(--accent-soft); border-color: transparent;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.op--mine > .op__line:hover { background: var(--accent-soft); }
+.op--open > .op__line { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.op--open > .crit {
+  padding: 12px;
+  background: var(--surface-1); border: 1px solid var(--border); border-top: 0;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+/* The open panel carries your row's accent edge down with it, so an expanded
+   card still reads as one object rather than a row and a loose panel. */
+.op--mine.op--open > .crit { box-shadow: inset 3px 0 0 var(--accent); border-color: transparent; }
+
+/* ── Tabs + tickets (your own row only) ─────────────────────────────── */
+.panel-tabs {
+  background: var(--surface-1); border: 1px solid var(--border); border-top: 0;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm); padding: 10px 12px 12px;
+  display: grid; gap: 10px;
+}
+.op--mine.op--open > .panel-tabs { box-shadow: inset 3px 0 0 var(--accent); border-color: transparent; }
+.panel-tabs > .crit { padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+
+.tabs { display: flex; gap: 2px; padding: 2px; background: var(--surface-2); border-radius: var(--radius-pill); }
+.tab {
+  flex: 1; border: 0; background: transparent; color: var(--text-secondary);
+  border-radius: var(--radius-pill); padding: 5px 0; font: inherit; font-size: 11.5px; cursor: pointer;
+}
+.tab:hover { color: var(--text-primary); }
+.tab[aria-pressed='true'] { background: var(--surface-1); color: var(--text-primary); font-weight: 600; }
+
+.tickets { display: grid; gap: 8px; }
+.tk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.tk {
+  display: grid; gap: 4px; padding: 8px 9px; min-width: 0;
+  background: var(--surface-2); border-radius: var(--radius-sm);
+}
+.tk__top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+/* Two lines, then an ellipsis: a support ticket's title is a sentence, and
+   truncating it to one line hides which ticket it is. */
+.tk__title {
+  font-size: 12px; line-height: 1.35; min-width: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tk__chips { display: flex; gap: 4px; flex: none; }
+.chip {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-pill);
+  padding: 1px 7px; font-size: 10.5px; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.chip--ai { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); font-weight: 600; }
+.tk__meta {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; min-width: 0;
+  font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+/* Status colour always arrives with its own glyph and word (✓ SLA / ✗ SLA),
+   so the verdict survives a colourblind reader and a greyscale screenshot. */
+.tk__sla--hit { color: var(--success-text); }
+.tk__sla--miss { color: var(--danger-text); }
+.tk__state { color: var(--gold); }
+.tk__cat {
+  min-width: 0; font-size: 10.5px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tk-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* ── Notes, prompts, footer ─────────────────────────────────────────── */
+.note { margin: 0; color: var(--text-muted); font-size: 11.5px; line-height: 1.45; }
+.note--warn { color: var(--gold); }
+.note--bad { color: var(--danger-text); }
+.note--ok { color: var(--success-text); }
+
+.prompt {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface-1); border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm); padding: 11px 12px;
+}
+.prompt .note { flex: 1; }
+
+.foot {
+  position: sticky; bottom: 0; z-index: 2;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  font-size: 11px; color: var(--text-muted);
+  background: var(--page); border-top: 1px solid var(--border);
+  padding: 9px 14px 11px; margin-top: 12px;
+}
+.foot a { color: var(--accent-text); text-decoration: none; }
+.foot a:hover { text-decoration: underline; }
+
+.btn {
+  border: 1px solid var(--border-strong); background: var(--surface-1); color: var(--text-primary);
+  border-radius: var(--radius-pill); padding: 7px 14px; font-size: 12px; cursor: pointer;
+  font-family: inherit;
+}
+.btn--primary { background: var(--accent-fill); border-color: transparent; color: #fff; font-weight: 600; }
+.btn--sm { padding: 6px 13px; font-size: 11.5px; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Options page ───────────────────────────────────────────────────── */
+.options { max-width: 520px; margin: 0 auto; padding: 28px 20px 48px; font-size: 14px; }
+.options h1 { font-size: 20px; font-weight: var(--display-weight); letter-spacing: var(--display-tracking); margin: 0 0 16px; }
+.panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; display: grid; gap: 16px; }
+.field { display: grid; gap: 5px; }
+.field__label { font-weight: 600; font-size: 13px; }
+.field__hint { color: var(--text-muted); font-size: 11.5px; }
+.field input, .field select {
+  font: inherit; font-size: 13px; color: var(--text-primary); background: var(--surface-2);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 8px 10px; width: 100%;
+}
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+code { font-family: var(--font-mono); font-size: 0.92em; }

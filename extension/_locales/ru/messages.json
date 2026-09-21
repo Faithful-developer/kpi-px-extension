@@ -1,0 +1,7 @@
+{
+  "extName": { "message": "KPI px", "description": "Extension name in the toolbar and the store listing." },
+  "extDescription": {
+    "message": "Рейтинг KPI команды поддержки прямо на панели — все операторы и вы среди них.",
+    "description": "Store listing description."
+  }
+}

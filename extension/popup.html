@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>KPI px</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="popup">
+    <div class="top">
+      <header class="bar">
+        <div class="bar__title">
+          <span class="bar__mark">KPI</span>
+          <span class="bar__period" id="period"></span>
+        </div>
+        <div class="bar__actions">
+          <button class="icon-btn" id="refresh" type="button" aria-label="Refresh now">⟳</button>
+          <button class="icon-btn" id="settings" type="button" aria-label="Settings">⚙</button>
+        </div>
+      </header>
+      <nav class="pills" id="ranges" aria-label="Range"></nav>
+    </div>
+
+    <main id="body">
+      <p class="note">Loading…</p>
+    </main>
+
+    <footer class="foot">
+      <span id="stamp"></span>
+      <a id="dash" href="#" target="_blank" rel="noreferrer">Dashboard ↗</a>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

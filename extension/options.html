@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>KPI px — settings</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="options">
+    <h1 data-i18n="optionsTitle">KPI px settings</h1>
+
+    <section class="panel">
+      <label class="field">
+        <span class="field__label" data-i18n="fieldHost">Dashboard host</span>
+        <input id="host" type="url" spellcheck="false" placeholder="https://auo.uz" />
+        <span class="field__hint" data-i18n="fieldHostHint">Where /api/summary lives.</span>
+      </label>
+
+      <label class="field">
+        <span class="field__label" data-i18n="fieldName">Your name</span>
+        <select id="operator"><option value="">Loading operators…</option></select>
+        <span class="field__hint" id="operatorHint"></span>
+      </label>
+
+      <label class="field">
+        <span class="field__label" data-i18n="fieldBadge">Badge shows</span>
+        <select id="badge">
+          <option value="score" data-i18n="fieldBadgeScore">Score</option>
+          <option value="rank" data-i18n="fieldBadgeRank">Place</option>
+        </select>
+        <span class="field__hint" data-i18n="fieldBadgeHint">Always today's number.</span>
+      </label>
+
+      <label class="field">
+        <span class="field__label" data-i18n="fieldRefresh">Refresh every</span>
+        <select id="refreshMinutes">
+          <option value="5" data-i18n="refresh_5">5 minutes</option>
+          <option value="15" data-i18n="refresh_15">15 minutes</option>
+          <option value="30" data-i18n="refresh_30">30 minutes</option>
+          <option value="60" data-i18n="refresh_60">1 hour</option>
+        </select>
+        <span class="field__hint" data-i18n="fieldRefreshHint">Each refresh is one request.</span>
+      </label>
+
+      <label class="field">
+        <span class="field__label" data-i18n="fieldLanguage">Language</span>
+        <select id="locale"></select>
+        <span class="field__hint" data-i18n="fieldLanguageHint">Auto follows the browser.</span>
+      </label>
+
+      <div class="row">
+        <button class="btn btn--primary" id="save" type="button" data-i18n="save">Save</button>
+        <button class="btn" id="reload" type="button" data-i18n="reloadOperators">Reload the list</button>
+        <span class="note" id="status"></span>
+      </div>
+    </section>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
