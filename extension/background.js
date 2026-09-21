@@ -48,12 +48,13 @@ async function paintBadge(card, mode, t) {
 }
 
 // Fetch one range and cache it. Returns the cache entry so callers can paint
-// from the same object they stored.
-export async function refresh(range = BADGE_RANGE, settings = null) {
+// from the same object they stored. `force` is live mode's tick: it bypasses
+// the server's crawl cache, which only a single-day range is allowed to do.
+export async function refresh(range = BADGE_RANGE, settings = null, { force = false } = {}) {
   const cfg = settings || (await loadSettings());
   const { from, to } = rangeFor(range);
   try {
-    const summary = await fetchSummary({ host: cfg.host, from, to });
+    const summary = await fetchSummary({ host: cfg.host, from, to, refresh: force && range === 'today' });
     const entry = { at: Date.now(), from, to, summary, error: null };
     await writeCache(range, entry);
     if (range === BADGE_RANGE) {
@@ -131,11 +132,11 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   }
 });
 
-// The popup asks for a refresh when it is opened or when its ⟳ is pressed. The
-// worker owns every fetch so the popup closing mid-request cannot abort it.
+// The popup asks for a refresh when it is opened, when its ⟳ is pressed, and on
+// every live-mode tick (`live: true`). The worker owns every fetch so the popup closing mid-request cannot abort it.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'refresh') {
-    refresh(msg.range || BADGE_RANGE).then(sendResponse);
+    refresh(msg.range || BADGE_RANGE, null, { force: msg.live === true }).then(sendResponse);
     return true; // async response
   }
   if (msg?.type === 'tickets') {

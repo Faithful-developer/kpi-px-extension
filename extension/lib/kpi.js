@@ -43,7 +43,17 @@ export const DEFAULTS = {
   badge: 'score',
   // 'auto' follows Chrome's UI language; 'en' | 'ru' | 'uz' override it.
   locale: 'auto',
+  // Live mode pins the range to today and re-crawls every LIVE_POLL_MS while
+  // the popup is open. Kept as a setting (the dashboard's is not) because a
+  // popup is reopened dozens of times a day, and whoever wants live wants it
+  // every time.
+  live: false,
+  // 'board' | 'tickets' — which view the popup opens on.
+  view: 'board',
 };
+
+// The dashboard's own live cadence (src/config.js POLL_INTERVAL_MS).
+export const LIVE_POLL_MS = 30000;
 
 export async function loadSettings() {
   const stored = await chrome.storage.sync.get(DEFAULTS);
@@ -116,9 +126,17 @@ export function rangeFor(key, now = new Date()) {
 // has answered plain HTTP clients with a 200 + a ~12 KB JS bot-challenge page
 // before; res.json() on that throws a parse error that reads like a bug in
 // this code. Naming it keeps the popup's error honest.
-export async function fetchSummary({ host, from, to, signal } = {}) {
+//
+// `refresh` asks the server to bypass its 10-minute crawl cache. The server
+// honours that for a single-day range from anyone (refreshAllowed in
+// src/server/taskSummaryHandler.js — the dashboard's live mode depends on the
+// same exception) and silently ignores it for anything wider, so it is only
+// ever sent for today.
+export async function fetchSummary({ host, from, to, refresh = false, signal } = {}) {
   const base = String(host || DEFAULTS.host).replace(/\/+$/, '');
-  const url = `${base}/api/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  const url =
+    `${base}/api/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}` +
+    (refresh && from === to ? '&refresh=1' : '');
   const res = await fetch(url, {
     credentials: 'omit',
     headers: { Accept: 'application/json' },

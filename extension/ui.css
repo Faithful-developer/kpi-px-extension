@@ -105,6 +105,26 @@ body {
 .icon-btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
 .icon-btn[data-busy='1'] { opacity: 0.5; pointer-events: none; }
 
+/* Live toggle — the dashboard's live pill, cut down. Off it is a quiet
+   outline; on it fills and its dot pulses, so the mode is readable from the
+   state of the button alone and not only from the word. */
+.live-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 9px;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary);
+  border-radius: var(--radius-pill); cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 600;
+}
+.live-btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.live-btn__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+.live-btn[aria-pressed='true'] { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); }
+.live-btn[aria-pressed='true'] .live-btn__dot { background: var(--accent); animation: live-pulse 1.6s ease-in-out infinite; }
+@keyframes live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-btn[aria-pressed='true'] .live-btn__dot { animation: none; }
+}
+
 /* ── Range pills ────────────────────────────────────────────────────── */
 .pills {
   display: flex; gap: 2px; padding: 3px;
@@ -117,6 +137,8 @@ body {
 }
 .pill:hover { color: var(--text-primary); }
 .pill[aria-pressed='true'] { background: var(--accent-fill); color: #fff; font-weight: 600; }
+.pill:disabled { opacity: 0.4; cursor: default; }
+.pill:disabled:hover { color: var(--text-secondary); }
 
 /* ── Content ────────────────────────────────────────────────────────── */
 #body { padding: 0 14px; display: grid; gap: 12px; align-content: start; }
@@ -270,14 +292,7 @@ body {
    card still reads as one object rather than a row and a loose panel. */
 .op--mine.op--open > .crit { box-shadow: inset 3px 0 0 var(--accent); border-color: transparent; }
 
-/* ── Tabs + tickets (your own row only) ─────────────────────────────── */
-.panel-tabs {
-  background: var(--surface-1); border: 1px solid var(--border); border-top: 0;
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm); padding: 10px 12px 12px;
-  display: grid; gap: 10px;
-}
-.op--mine.op--open > .panel-tabs { box-shadow: inset 3px 0 0 var(--accent); border-color: transparent; }
-.panel-tabs > .crit { padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+/* ── View switch (Board | My tickets) + the tickets view ────────────── */
 
 .tabs { display: flex; gap: 2px; padding: 2px; background: var(--surface-2); border-radius: var(--radius-pill); }
 .tab {
@@ -288,10 +303,18 @@ body {
 .tab[aria-pressed='true'] { background: var(--surface-1); color: var(--text-primary); font-weight: 600; }
 
 .tickets { display: grid; gap: 8px; }
+.tickets__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 0 2px; font-size: 11.5px; color: var(--text-muted);
+}
+.tickets__title { font-weight: 600; color: var(--text-primary); }
+.tickets__sum { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+/* The list now sits straight on the page rather than inside a panel, so a
+   ticket is a surface-1 card with a hairline, like a board row. */
 .tk {
-  display: grid; gap: 4px; padding: 8px 9px; min-width: 0;
-  background: var(--surface-2); border-radius: var(--radius-sm);
+  display: grid; gap: 4px; padding: 8px 10px; min-width: 0;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
 .tk__top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 /* Two lines, then an ellipsis: a support ticket's title is a sentence, and
@@ -302,7 +325,7 @@ body {
 }
 .tk__chips { display: flex; gap: 4px; flex: none; }
 .chip {
-  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill);
   padding: 1px 7px; font-size: 10.5px; color: var(--text-secondary);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }

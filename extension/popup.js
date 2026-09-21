@@ -9,7 +9,7 @@
 //
 // Painted from the last cached payload the instant it opens, then repainted
 // when the worker comes back with fresh data. Nothing here fetches.
-import { RANGES, MIN_SAMPLE, TZ, buildBoard, findRow, loadSettings, saveSettings, rangeFor } from './lib/kpi.js';
+import { RANGES, MIN_SAMPLE, TZ, LIVE_POLL_MS, buildBoard, findRow, loadSettings, saveSettings, rangeFor } from './lib/kpi.js';
 import { makeT, resolveLocale } from './lib/i18n.js';
 
 const $ = (id) => document.getElementById(id);
@@ -32,12 +32,27 @@ let range = 'today';
 // their breakdown is the one thing they came for — and tapping any row swaps
 // it, so comparing two people is two taps.
 let openId = null;
-// Which tab the viewer's own open row is on, and how much of the ticket list
-// has been asked for. A month is ~390 tickets; painting them all into a 400 px
-// panel costs more than anyone reads in one go.
-let tab = 'criteria';
+// Which view is up — the board, or the viewer's own tickets — and how much of
+// the ticket list has been asked for. A month is ~390 tickets; painting them
+// all into a 400 px panel costs more than anyone reads in one go.
+//
+// The tickets are a VIEW of their own, one tap from the header, rather than a
+// tab on your row in the board: on a board where you sit third behind people
+// with twice your tickets, reaching your own history meant scrolling past
+// theirs first.
+let view = 'board';
 let shown = PAGE;
 let ticketEntry = null;
+// Live mode: the range is pinned to today and re-crawled every LIVE_POLL_MS
+// while the popup is open. The popup's timer dies with the popup, which is the
+// point — a closed popup goes back to the worker's normal alarm cadence.
+let live = false;
+let liveTimer = null;
+let ticking = false;
+
+// The range actually on screen: live mode overrides the picked one without
+// forgetting it, so switching live off lands back where the viewer was.
+const active = () => (live ? 'today' : range);
 
 const cacheKey = (r) => `cache:${r}`;
 
@@ -81,11 +96,31 @@ function renderRanges() {
     ...RANGES.map(({ key }) => {
       const b = el('button', 'pill', t(`range_${key}`));
       b.type = 'button';
-      b.setAttribute('aria-pressed', String(key === range));
+      b.setAttribute('aria-pressed', String(key === active()));
+      // Live is today by definition; the other ranges wait until it is off.
+      b.disabled = live && key !== 'today';
       b.addEventListener('click', () => selectRange(key));
       return b;
     })
   );
+}
+
+function renderViews() {
+  $('views').replaceChildren(
+    ...['board', 'tickets'].map((key) => {
+      const b = el('button', 'tab', t(`view_${key}`));
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(key === view));
+      b.addEventListener('click', () => selectView(key));
+      return b;
+    })
+  );
+}
+
+function renderLive() {
+  $('live').setAttribute('aria-pressed', String(live));
+  $('live').setAttribute('aria-label', t('liveAria'));
+  $('liveLabel').textContent = t('live');
 }
 
 // ── Team tiles ───────────────────────────────────────────────────────────
@@ -238,7 +273,7 @@ function renderBoard(board, mine) {
       repaint();
     });
     item.append(line);
-    if (isOpen) item.append(isMine ? renderMyPanel(row) : renderCriteria(row));
+    if (isOpen) item.append(renderCriteria(row));
     wrap.append(item);
   }
   return wrap;
@@ -294,7 +329,7 @@ function renderTicket(ticket, multiDay) {
 }
 
 function renderTickets() {
-  const wrap = el('div', 'tickets');
+  const wrap = el('section', 'tickets');
   if (!ticketEntry) {
     wrap.append(el('p', 'note', t('ticketsLoading')));
     return wrap;
@@ -336,24 +371,21 @@ function renderTickets() {
   return wrap;
 }
 
-// Your own open row carries tabs; everyone else's shows criteria alone.
-function renderMyPanel(row) {
-  const panel = el('div', 'panel-tabs');
-  const tabs = el('div', 'tabs');
-  for (const key of ['criteria', 'tickets']) {
-    const b = el('button', 'tab', t(key === 'criteria' ? 'tabCriteria' : 'tabTickets'));
-    b.type = 'button';
-    b.setAttribute('aria-pressed', String(tab === key));
-    b.addEventListener('click', () => {
-      tab = key;
-      shown = PAGE;
-      repaint();
-      if (key === 'tickets') loadTickets();
-    });
-    tabs.append(b);
+// The header of the My tickets view: how many, and how this range went. The
+// closed and SLA counts are over the LOADED rows — the server caps a list at
+// 400 and says so in meta.truncated, which the pager's footer already shows.
+function renderTicketsHead() {
+  const head = el('div', 'tickets__head');
+  const all = ticketEntry?.tickets;
+  const total = ticketEntry?.meta?.totalTickets ?? all?.length;
+  head.append(el('span', 'tickets__title', t('ticketsHead', { n: isNum(total) ? total : '…' })));
+  if (all?.length) {
+    const closed = all.filter((x) => x.state === 'closed').length;
+    const measured = all.filter((x) => x.sla === 'hit' || x.sla === 'miss');
+    const hit = measured.filter((x) => x.sla === 'hit').length;
+    head.append(el('span', 'tickets__sum', t('ticketsSummary', { closed, hit, sla: measured.length })));
   }
-  panel.append(tabs, tab === 'tickets' ? renderTickets() : renderCriteria(row));
-  return panel;
+  return head;
 }
 
 // ── Paint ────────────────────────────────────────────────────────────────
@@ -361,13 +393,14 @@ let lastEntry = null;
 
 function paint(entry) {
   lastEntry = entry;
-  const { from, to } = rangeFor(range);
+  const { from, to } = rangeFor(active());
   $('dash').href = `${String(settings.host).replace(/\/+$/, '')}/?from=${from}&to=${to}`;
+  // Live needs no caption here: the pressed Live pill beside it is the caption.
   $('period').textContent = from === to ? from : `${from} → ${to}`;
 
   if (!entry?.summary) {
     $('body').replaceChildren(el('p', entry?.error ? 'note note--bad' : 'note', entry?.error || t('loading')));
-    $('stamp').textContent = '';
+    $('stamp').textContent = live ? t('liveFoot') : '';
     return;
   }
 
@@ -375,21 +408,32 @@ function paint(entry) {
   const mine = findRow(board.rows, settings);
   if (openId === null && mine) openId = mine.id;
 
-  const parts = [renderTiles(board.kpis)];
-  if (mine) parts.push(renderMine(mine, board));
-  else parts.push(renderPickPrompt());
-  if (board.total) parts.push(renderBoard(board, mine));
-  else parts.push(el('p', 'note', 'Nobody has a closed task on this range yet.'));
+  const parts = [];
+  if (view === 'tickets') {
+    // Your card on top, your tickets straight under it — nobody else's row in
+    // between. A picked name with no task in range has no row, and still has
+    // a (possibly empty) ticket list to show.
+    if (mine) parts.push(renderMine(mine, board));
+    if (settings.operatorId == null) parts.push(renderPickPrompt(t('ticketsPick')));
+    else parts.push(renderTicketsHead(), renderTickets());
+  } else {
+    parts.push(renderTiles(board.kpis));
+    if (mine) parts.push(renderMine(mine, board));
+    else parts.push(renderPickPrompt());
+    if (board.total) parts.push(renderBoard(board, mine));
+    else parts.push(el('p', 'note', t('emptyBoard')));
+  }
   if (entry.error) parts.push(el('p', 'note note--bad', t('staleData', { error: entry.error })));
 
   $('body').replaceChildren(...parts);
-  $('stamp').textContent = stamp(entry.at);
+  const when = stamp(entry.at);
+  $('stamp').textContent = live ? [t('liveFoot'), when].filter(Boolean).join(' · ') : when;
 }
 
 // Not a gate — a one-line offer above a board that is already readable.
-function renderPickPrompt() {
+function renderPickPrompt(text = t('pickPrompt')) {
   const box = el('div', 'prompt');
-  box.append(el('span', 'note', t('pickPrompt')));
+  box.append(el('span', 'note', text));
   const btn = el('button', 'btn btn--primary btn--sm', t('pickAction'));
   btn.type = 'button';
   btn.addEventListener('click', () => chrome.runtime.openOptionsPage());
@@ -400,21 +444,42 @@ function renderPickPrompt() {
 // Fetched by the worker, never here, so closing the popup mid-request cannot
 // abort it — and painted from the cache first, like everything else.
 async function loadTickets() {
-  const cached = await chrome.storage.local.get(`tickets:${range}`);
-  const entry = cached[`tickets:${range}`];
-  if (entry && entry.operatorId === settings.operatorId && entry.from === rangeFor(range).from) {
+  if (settings.operatorId == null) return;
+  const r = active();
+  const cached = await chrome.storage.local.get(`tickets:${r}`);
+  const entry = cached[`tickets:${r}`];
+  // A list only replaces what is on screen if it is still the range on
+  // screen — a range switch mid-request must not paint the old range's list.
+  if (!ticketEntry && entry && entry.operatorId === settings.operatorId && entry.from === rangeFor(r).from && r === active()) {
     ticketEntry = entry;
     repaint();
   }
+  let next;
   try {
-    ticketEntry = await chrome.runtime.sendMessage({ type: 'tickets', range });
+    next = await chrome.runtime.sendMessage({ type: 'tickets', range: r });
   } catch (err) {
-    ticketEntry = { tickets: null, error: String(err?.message || err) };
+    next = { tickets: null, error: String(err?.message || err) };
   }
+  if (r !== active()) return;
+  // A failed live tick keeps the list already on screen, under a stale note.
+  ticketEntry = next?.tickets || !ticketEntry?.tickets ? next : { ...ticketEntry, error: next?.error };
   repaint();
 }
 
-function jumpToMyRow() {
+async function selectView(next) {
+  if (next === view) return;
+  view = next;
+  shown = PAGE;
+  renderViews();
+  repaint();
+  // Land on the top of the new view, not wherever the board was scrolled to.
+  document.documentElement.scrollTop = 0;
+  await saveSettings({ view });
+  if (view === 'tickets') await loadTickets();
+}
+
+async function jumpToMyRow() {
+  if (view !== 'board') await selectView('board');
   const row = document.querySelector('.op--mine');
   // jsdom has no scrollIntoView, and neither does a row that is not rendered.
   if (row && typeof row.scrollIntoView === 'function') {
@@ -425,6 +490,7 @@ function jumpToMyRow() {
 const repaint = () => paint(lastEntry);
 
 async function selectRange(next) {
+  if (live) return;
   range = next;
   openId = null;
   // A ticket list belongs to one range; keeping it across a range switch
@@ -435,16 +501,63 @@ async function selectRange(next) {
   renderRanges();
   paint(await readCache(range));
   await refresh();
+  if (view === 'tickets') await loadTickets();
 }
 
-async function refresh() {
+// `force` bypasses the server's crawl cache — live mode's ticks only, and only
+// ever for today (the server refuses it for anything wider anyway).
+async function refresh({ force = false } = {}) {
+  const r = active();
   $('refresh').dataset.busy = '1';
   try {
-    paint(await chrome.runtime.sendMessage({ type: 'refresh', range }));
+    const entry = await chrome.runtime.sendMessage({ type: 'refresh', range: r, live: force });
+    if (r === active()) paint(entry);
   } catch (err) {
-    paint({ error: String(err?.message || err) });
+    // A failed tick keeps the board on screen, like a failed alarm does.
+    if (r === active()) paint(lastEntry?.summary ? { ...lastEntry, error: String(err?.message || err) } : { error: String(err?.message || err) });
   } finally {
     delete $('refresh').dataset.busy;
+  }
+}
+
+// One live tick: the summary with the cache bypassed, then — only if the
+// tickets are on screen — the list, which the server reads from the entry the
+// forced crawl just refilled. A tick that finds the last one still running is
+// skipped rather than stacked.
+async function liveTick() {
+  if (ticking) return;
+  ticking = true;
+  try {
+    await refresh({ force: true });
+    if (view === 'tickets') await loadTickets();
+  } finally {
+    ticking = false;
+  }
+}
+
+function armLive() {
+  clearInterval(liveTimer);
+  liveTimer = live ? setInterval(liveTick, LIVE_POLL_MS) : null;
+}
+
+async function toggleLive() {
+  live = !live;
+  renderLive();
+  renderRanges();
+  // Live changes the range whenever the picked one is not today; either way
+  // the list on screen belongs to a range that just stopped being current.
+  if (range !== 'today') {
+    ticketEntry = null;
+    shown = PAGE;
+    openId = null;
+  }
+  paint(await readCache(active()));
+  armLive();
+  await saveSettings({ live });
+  if (live) await liveTick();
+  else {
+    await refresh();
+    if (view === 'tickets') await loadTickets();
   }
 }
 
@@ -456,11 +569,23 @@ async function main() {
   $('settings').setAttribute('aria-label', t('settings'));
   $('dash').textContent = `${t('dashboard')} ↗`;
   range = RANGES.some((r) => r.key === settings.range) ? settings.range : 'today';
+  view = settings.view === 'tickets' ? 'tickets' : 'board';
+  live = settings.live === true;
+  renderLive();
   renderRanges();
-  paint(await readCache(range)); // instant, from the last background refresh
-  $('refresh').addEventListener('click', refresh);
+  renderViews();
+  paint(await readCache(active())); // instant, from the last background refresh
+  $('refresh').addEventListener('click', () => (live ? liveTick() : refresh().then(() => view === 'tickets' && loadTickets())));
   $('settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
-  await refresh(); // then revalidate
+  $('live').addEventListener('click', toggleLive);
+  armLive();
+  // Then revalidate — forced when live, so opening the popup in live mode is
+  // itself the first tick rather than a 30 s wait for one.
+  if (live) await liveTick();
+  else {
+    await refresh();
+    if (view === 'tickets') await loadTickets();
+  }
 }
 
 main();
