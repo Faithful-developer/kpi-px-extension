@@ -9,7 +9,20 @@
 //
 // Painted from the last cached payload the instant it opens, then repainted
 // when the worker comes back with fresh data. Nothing here fetches.
-import { RANGES, MIN_SAMPLE, TZ, LIVE_POLL_MS, buildBoard, findRow, loadSettings, saveSettings, rangeFor } from './lib/kpi.js';
+import {
+  RANGES,
+  MIN_SAMPLE,
+  TZ,
+  LIVE_POLL_MS,
+  applyTheme,
+  buildBoard,
+  errorKind,
+  findRow,
+  hostLabel,
+  loadSettings,
+  saveSettings,
+  rangeFor,
+} from './lib/kpi.js';
 import { makeT, resolveLocale } from './lib/i18n.js';
 
 const $ = (id) => document.getElementById(id);
@@ -80,15 +93,74 @@ const displayName = (row) => (typeof row.name === 'string' && row.name.trim()) |
 // nobody gave it.
 const isNum = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
 
-const num = (v, digits = 0) => (isNum(v) ? Number(v).toFixed(digits) : '—');
+// Numbers in the viewer's own locale — «89,7» in Russian and Uzbek, not the
+// English decimal point. One formatter per digit count, rebuilt with `t`.
+const numFormats = new Map();
+function num(v, digits = 0) {
+  if (!isNum(v)) return '—';
+  const key = `${t.intl}:${digits}`;
+  if (!numFormats.has(key)) {
+    numFormats.set(key, new Intl.NumberFormat(t.intl, { minimumFractionDigits: digits, maximumFractionDigits: digits }));
+  }
+  return numFormats.get(key).format(Number(v));
+}
+
+const clockText = (at) => new Date(at).toLocaleTimeString(t.intl, { hour: '2-digit', minute: '2-digit' });
+
+// How often a fresh payload is due: the live tick when live, otherwise the
+// worker's alarm.
+const refreshMs = () => (live ? LIVE_POLL_MS : Math.max(1, Number(settings?.refreshMinutes) || 15) * 60000);
+
+// Past two missed refreshes the worker has been failing quietly — the stamp
+// turns into an absolute time in the warning colour, so an old board never
+// passes for a current one.
+const isStale = (at) => Boolean(at) && Date.now() - at > 2 * refreshMs();
 
 function stamp(at) {
   if (!at) return '';
   const mins = Math.round((Date.now() - at) / 60000);
+  if (isStale(at) || mins >= 60) return t('updatedAt', { time: clockText(at) });
   if (mins < 1) return t('justNow');
   // Not Intl.RelativeTimeFormat — see the note at the end of lib/i18n.js.
-  if (mins < 60) return t('minutesAgo', { n: mins });
-  return new Date(at).toLocaleTimeString(t.intl, { hour: '2-digit', minute: '2-digit' });
+  return t('minutesAgo', { n: mins });
+}
+
+// The header's range, in the viewer's language: "1–23 Sept", «1–23 сент.».
+// Dates are calendar days, so they are read as UTC midnight and formatted in
+// UTC — no timezone can shift them by a day.
+function periodText(from, to) {
+  const at = (iso) => new Date(`${iso}T00:00:00Z`);
+  try {
+    const fmt = new Intl.DateTimeFormat(t.intl, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+    const out = from === to ? fmt.format(at(from)) : fmt.formatRange(at(from), at(to));
+    // Chrome's ICU can claim a locale and format it with ROOT data (see the
+    // note at the end of lib/i18n.js); root month names are "M09".
+    if (!/\bM\d{2}\b/.test(out)) return out;
+  } catch {
+    // formatRange missing — fall through to the numeric form.
+  }
+  const dm = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+  return from === to ? dm(from) : `${dm(from)}–${dm(to)}`;
+}
+
+// Notes announce themselves: a status politely, a failure at once.
+function note(text, tone = '') {
+  const p = el('p', `note${tone ? ` note--${tone}` : ''}`, text);
+  p.setAttribute('role', tone === 'bad' ? 'alert' : 'status');
+  if (tone !== 'bad') p.setAttribute('aria-live', 'polite');
+  return p;
+}
+
+// A failure in plain words. The raw exception text stays in the worker's
+// cache entry (and the toolbar tooltip); the panel says what happened and
+// what to do. `at` is when the data still on screen was fetched, if any.
+function errorText(error, at) {
+  const host = hostLabel(settings?.host);
+  const kind = errorKind(error);
+  if (kind === 'botCheck') return t('errBotCheck', { host });
+  const what = t(kind === 'network' ? 'errNetwork' : 'errServer', { host });
+  const next = at ? t('errShowingFrom', { time: clockText(at) }) : t('errRetries');
+  return `${what} ${next}`;
 }
 
 function renderRanges() {
@@ -97,8 +169,13 @@ function renderRanges() {
       const b = el('button', 'pill', t(`range_${key}`));
       b.type = 'button';
       b.setAttribute('aria-pressed', String(key === active()));
-      // Live is today by definition; the other ranges wait until it is off.
+      // Live is today by definition; the other ranges wait until it is off,
+      // and say why rather than just greying out.
       b.disabled = live && key !== 'today';
+      if (b.disabled) {
+        b.title = t('liveRangeHint');
+        b.setAttribute('aria-describedby', 'rangeHint');
+      }
       b.addEventListener('click', () => selectRange(key));
       return b;
     })
@@ -118,6 +195,7 @@ function renderViews() {
 }
 
 function renderLive() {
+  $('rangeHint').textContent = t('liveRangeHint');
   $('live').setAttribute('aria-pressed', String(live));
   $('live').setAttribute('aria-label', t('liveAria'));
   $('liveLabel').textContent = t('live');
@@ -160,11 +238,11 @@ function renderCriteria(row) {
     fill.style.width = `${Math.max(0, Math.min(100, c.score ?? 0))}%`;
     bar.append(fill);
     li.append(bar);
-    const bits = [];
-    if (!c.available) bits.push(t('critNoData'));
-    else bits.push(t('critScore', { score: Math.round(c.score), weight: c.weight }));
-    if (c.reliable === false) bits.push(t('critSample', { n: c.sample, min: MIN_SAMPLE }));
-    li.append(el('span', 'crit__meta', bits.join(' · ')));
+    const meta = el('span', 'crit__meta');
+    if (!c.available) meta.append(el('span', null, t('critNoData')));
+    else meta.append(el('span', null, t('critScore', { score: num(c.score, 0), weight: num(c.weight, 0) })));
+    if (c.reliable === false) meta.append(el('span', null, t('critSample', { n: num(c.sample), min: MIN_SAMPLE })));
+    li.append(meta);
     list.append(li);
   }
   return list;
@@ -185,11 +263,7 @@ function renderMine(row, board) {
   rank.type = 'button';
   rank.setAttribute('aria-label', t('jumpToRow', { rank: row.rank, total: board.total }));
   const medal = row.grandPrixEligible && MEDALS[row.rank] ? `${MEDALS[row.rank]} ` : '';
-  rank.append(
-    el('span', null, `${medal}#${row.rank}`),
-    el('span', 'rank__of', t('rankOf', { n: board.total })),
-    el('span', 'rank__go', '↓')
-  );
+  rank.append(el('span', null, `${medal}#${row.rank}`), el('span', 'rank__of', t('rankOf', { n: board.total })));
   rank.addEventListener('click', jumpToMyRow);
   who.append(rank);
 
@@ -204,20 +278,18 @@ function renderMine(row, board) {
 
   const meta = el('p', 'mine__meta');
   const scored = row.criteria.filter((c) => c.available).length;
+  // Separated by the flex gap, not by middle dots.
   meta.append(
-    el('span', 'mine__stat', t('statClosed', { n: row.done })),
-    el('span', 'op__dot', '·'),
+    el('span', 'mine__stat', t('statClosed', { n: num(row.done) })),
     el('span', 'mine__stat', t('statAi', { v: num(row.raw.ai, 1) })),
-    el('span', 'op__dot', '·'),
     el('span', 'mine__stat', t('statPoints', { v: num(row.raw.difficulty, 1) })),
-    el('span', 'op__dot', '·'),
-    el('span', null, t('statCriteria', { n: scored, total: row.criteria.length, weight: board.totalWeight }))
+    el('span', null, t('statCriteria', { n: scored, total: row.criteria.length, weight: num(board.totalWeight) }))
   );
   card.append(meta);
 
   if (!row.grandPrixEligible) {
     card.append(
-      el('p', 'note note--warn', t('notEligible', { n: row.samples.ai, min: MIN_SAMPLE }))
+      note(t('notEligible', { n: row.samples.ai, min: MIN_SAMPLE }), 'warn')
     );
   }
   return card;
@@ -227,7 +299,9 @@ function renderMine(row, board) {
 function renderBoard(board, mine) {
   const wrap = el('section', 'board');
   const head = el('div', 'board__head');
-  head.append(el('span', null, t('boardHead', { n: board.total })), el('span', 'board__headScore', t('boardScore')));
+  const title = el('span', 'board__title');
+  title.append(el('span', null, t('boardHead')), el('span', 'count', num(board.total)));
+  head.append(title, el('span', 'board__headScore', t('boardScore')));
   wrap.append(head);
 
   const top = board.rows[0]?.final || 100;
@@ -257,14 +331,12 @@ function renderBoard(board, mine) {
 
     const meta = el('span', 'op__meta');
     meta.append(
-      el('span', null, t('statClosed', { n: row.done })),
-      el('span', 'op__dot', '·'),
+      el('span', null, t('statClosed', { n: num(row.done) })),
       el('span', null, t('statAi', { v: num(row.raw.ai, 1) })),
-      el('span', 'op__dot', '·'),
       el('span', null, t('statPoints', { v: num(row.raw.difficulty, 1) }))
     );
     if (!row.grandPrixEligible) {
-      meta.append(el('span', 'op__dot', '·'), el('span', 'op__flag', t('sampleShort', { n: row.samples.ai })));
+      meta.append(el('span', 'op__flag', t('sampleShort', { n: row.samples.ai })));
     }
     line.append(meta);
 
@@ -284,7 +356,8 @@ function durationText(seconds) {
   if (!isNum(seconds) || seconds < 0) return null;
   const mins = Math.round(seconds / 60);
   if (mins < 60) return t('minutesShort', { n: Math.max(1, mins) });
-  return t('hoursShort', { n: Math.round((mins / 60) * 10) / 10 });
+  const hours = Math.round(mins / 6) / 10;
+  return t('hoursShort', { n: num(hours, Number.isInteger(hours) ? 0 : 1) });
 }
 
 function renderTicket(ticket, multiDay) {
@@ -310,15 +383,15 @@ function renderTicket(ticket, multiDay) {
     meta.append(el('span', null, multiDay ? `${DAY.format(when)} ${CLOCK.format(when)}` : CLOCK.format(when)));
   }
   const dur = durationText(Number(ticket.durationSeconds));
-  if (dur) meta.append(el('span', 'op__dot', '·'), el('span', null, dur));
+  if (dur) meta.append(el('span', null, dur));
 
   // An icon AND a word, never colour alone.
   const slaKey = ticket.sla === 'hit' ? 'slaHit' : ticket.sla === 'miss' ? 'slaMiss' : 'slaNone';
   const slaClass = ticket.sla === 'hit' ? ' tk__sla--hit' : ticket.sla === 'miss' ? ' tk__sla--miss' : '';
-  meta.append(el('span', 'op__dot', '·'), el('span', `tk__sla${slaClass}`, t(slaKey)));
+  meta.append(el('span', `tk__sla${slaClass}`, t(slaKey)));
 
   if (ticket.state && ticket.state !== 'closed') {
-    meta.append(el('span', 'op__dot', '·'), el('span', 'tk__state', t(ticket.state === 'cancelled' ? 'stateCancelled' : 'stateOpen')));
+    meta.append(el('span', 'tk__state', t(ticket.state === 'cancelled' ? 'stateCancelled' : 'stateOpen')));
   }
   li.append(meta);
   // The category gets its own line rather than a fourth inline item: a wrapped
@@ -331,16 +404,16 @@ function renderTicket(ticket, multiDay) {
 function renderTickets() {
   const wrap = el('section', 'tickets');
   if (!ticketEntry) {
-    wrap.append(el('p', 'note', t('ticketsLoading')));
+    wrap.append(note(t('ticketsLoading')));
     return wrap;
   }
   if (!ticketEntry.tickets) {
-    wrap.append(el('p', 'note note--bad', t('ticketsFailed', { error: ticketEntry.error || '' })));
+    wrap.append(note(`${t('ticketsFailed')} ${errorText(ticketEntry.error, null)}`, 'bad'));
     return wrap;
   }
   const all = ticketEntry.tickets;
   if (!all.length) {
-    wrap.append(el('p', 'note', t('ticketsEmpty')));
+    wrap.append(note(t('ticketsEmpty')));
     return wrap;
   }
 
@@ -353,7 +426,7 @@ function renderTickets() {
   const visible = Math.min(shown, all.length);
   if (visible < all.length || total > all.length) {
     const foot = el('div', 'tk-foot');
-    foot.append(el('span', 'note', t('ticketsShown', { n: visible, total })));
+    foot.append(el('span', 'note', t('ticketsShown', { n: num(visible), total: num(total) })));
     if (visible < all.length) {
       const more = el('button', 'btn btn--sm', t('ticketsMore'));
       more.type = 'button';
@@ -366,7 +439,7 @@ function renderTickets() {
     wrap.append(foot);
   }
   if (ticketEntry.error) {
-    wrap.append(el('p', 'note note--bad', t('staleData', { error: ticketEntry.error })));
+    wrap.append(note(errorText(ticketEntry.error, ticketEntry.at), 'bad'));
   }
   return wrap;
 }
@@ -378,12 +451,19 @@ function renderTicketsHead() {
   const head = el('div', 'tickets__head');
   const all = ticketEntry?.tickets;
   const total = ticketEntry?.meta?.totalTickets ?? all?.length;
-  head.append(el('span', 'tickets__title', t('ticketsHead', { n: isNum(total) ? total : '…' })));
+  const title = el('span', 'tickets__title');
+  title.append(el('span', null, t('ticketsHead')), el('span', 'count', isNum(total) ? num(total) : '…'));
+  head.append(title);
   if (all?.length) {
     const closed = all.filter((x) => x.state === 'closed').length;
     const measured = all.filter((x) => x.sla === 'hit' || x.sla === 'miss');
     const hit = measured.filter((x) => x.sla === 'hit').length;
-    head.append(el('span', 'tickets__sum', t('ticketsSummary', { closed, hit, sla: measured.length })));
+    const sum = el('span', 'tickets__sum');
+    sum.append(
+      el('span', null, t('ticketsClosed', { closed: num(closed) })),
+      el('span', null, t('ticketsSla', { hit: num(hit), sla: num(measured.length) }))
+    );
+    head.append(sum);
   }
   return head;
 }
@@ -394,13 +474,13 @@ let lastEntry = null;
 function paint(entry) {
   lastEntry = entry;
   const { from, to } = rangeFor(active());
-  $('dash').href = `${String(settings.host).replace(/\/+$/, '')}/?from=${from}&to=${to}`;
+  $('dash').href = dashUrl(from, to);
   // Live needs no caption here: the pressed Live pill beside it is the caption.
-  $('period').textContent = from === to ? from : `${from} → ${to}`;
+  $('period').textContent = periodText(from, to);
 
   if (!entry?.summary) {
-    $('body').replaceChildren(el('p', entry?.error ? 'note note--bad' : 'note', entry?.error || t('loading')));
-    $('stamp').textContent = live ? t('liveFoot') : '';
+    $('body').replaceChildren(entry?.error ? renderFailure(entry.error, from, to) : note(t('loading')));
+    renderStamp(null);
     return;
   }
 
@@ -417,17 +497,47 @@ function paint(entry) {
     if (settings.operatorId == null) parts.push(renderPickPrompt(t('ticketsPick')));
     else parts.push(renderTicketsHead(), renderTickets());
   } else {
-    parts.push(renderTiles(board.kpis));
+    // Your own number first — it is what the popup is opened for — then the
+    // team's headline tiles, then the board.
     if (mine) parts.push(renderMine(mine, board));
     else parts.push(renderPickPrompt());
+    parts.push(renderTiles(board.kpis));
     if (board.total) parts.push(renderBoard(board, mine));
-    else parts.push(el('p', 'note', t('emptyBoard')));
+    else parts.push(note(t('emptyBoard')));
   }
-  if (entry.error) parts.push(el('p', 'note note--bad', t('staleData', { error: entry.error })));
+  if (entry.error) parts.push(note(errorText(entry.error, entry.at), 'bad'));
 
   $('body').replaceChildren(...parts);
-  const when = stamp(entry.at);
-  $('stamp').textContent = live ? [t('liveFoot'), when].filter(Boolean).join(' · ') : when;
+  renderStamp(entry.at);
+}
+
+const dashUrl = (from, to) => `${String(settings.host).replace(/\/+$/, '')}/?from=${from}&to=${to}`;
+
+// The footer stamp: "Live, every 30 s" and the age as two spans (no joining
+// dot), the age in the warning colour once it is stale.
+function renderStamp(at) {
+  const box = $('stamp');
+  box.className = `foot__stamp${isStale(at) ? ' foot__stamp--stale' : ''}`;
+  const bits = [live ? t('liveFoot') : '', stamp(at)].filter(Boolean);
+  box.replaceChildren(...bits.map((text) => el('span', null, text)));
+}
+
+// Nothing cached AND the fetch failed: the plain reason, then the two ways
+// out — try again now, or open the dashboard (which also clears a bot check).
+function renderFailure(error, from, to) {
+  const box = el('div', 'fail');
+  box.append(note(errorText(error, null), 'bad'));
+  const actions = el('div', 'fail__actions');
+  const retry = el('button', 'btn btn--primary btn--sm', t('retry'));
+  retry.type = 'button';
+  retry.addEventListener('click', () => (live ? liveTick() : refresh()));
+  const open = el('a', 'btn btn--sm', t('openDashboard'));
+  open.href = dashUrl(from, to);
+  open.target = '_blank';
+  open.rel = 'noreferrer';
+  actions.append(retry, open);
+  box.append(actions);
+  return box;
 }
 
 // Not a gate — a one-line offer above a board that is already readable.
@@ -483,7 +593,8 @@ async function jumpToMyRow() {
   const row = document.querySelector('.op--mine');
   // jsdom has no scrollIntoView, and neither does a row that is not rendered.
   if (row && typeof row.scrollIntoView === 'function') {
-    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    row.scrollIntoView({ block: 'center', behavior: still ? 'auto' : 'smooth' });
   }
 }
 
@@ -563,6 +674,7 @@ async function toggleLive() {
 
 async function main() {
   settings = await loadSettings();
+  applyTheme(settings.theme);
   t = makeT(resolveLocale(settings.locale));
   document.documentElement.lang = t.locale;
   $('refresh').setAttribute('aria-label', t('refresh'));

@@ -16,16 +16,28 @@
           <button class="live-btn" id="live" type="button" aria-pressed="false">
             <span class="live-btn__dot" aria-hidden="true"></span><span id="liveLabel">Live</span>
           </button>
-          <button class="icon-btn" id="refresh" type="button" aria-label="Refresh now">⟳</button>
-          <button class="icon-btn" id="settings" type="button" aria-label="Settings">⚙</button>
+          <button class="icon-btn" id="refresh" type="button" aria-label="Refresh now">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="M13.5 8a5.5 5.5 0 1 1-1.61-3.89" />
+              <path d="M13.5 2.5v3h-3" />
+            </svg>
+          </button>
+          <button class="icon-btn" id="settings" type="button" aria-label="Settings">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false">
+              <path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6" />
+              <circle cx="10" cy="4.5" r="1.5" />
+              <circle cx="6" cy="11.5" r="1.5" />
+            </svg>
+          </button>
         </div>
       </header>
       <nav class="pills" id="ranges" aria-label="Range"></nav>
+      <span id="rangeHint" hidden></span>
       <nav class="tabs" id="views" aria-label="View"></nav>
     </div>
 
     <main id="body">
-      <p class="note">Loading…</p>
+      <p class="note" role="status" aria-live="polite">Loading…</p>
     </main>
 
     <footer class="foot">

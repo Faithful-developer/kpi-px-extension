@@ -1,6 +1,17 @@
 // Settings. The operator picker is filled from the host's own payload rather
 // than a typed name, so the id is stored and the card survives a rename.
-import { DEFAULTS, loadSettings, saveSettings, rosterRange, fetchSummary, operatorChoices } from './lib/kpi.js';
+import {
+  DEFAULTS,
+  THEMES,
+  applyTheme,
+  errorKind,
+  hostLabel,
+  loadSettings,
+  saveSettings,
+  rosterRange,
+  fetchSummary,
+  operatorChoices,
+} from './lib/kpi.js';
 import { LOCALES, LOCALE_NAMES, makeT, resolveLocale } from './lib/i18n.js';
 
 const $ = (id) => document.getElementById(id);
@@ -17,8 +28,10 @@ function applyStaticText() {
   }
 }
 
+// A failure is an alert (read out at once); anything else is a polite status.
 function say(text, tone = '') {
   $('status').className = `note${tone ? ` note--${tone}` : ''}`;
+  $('status').setAttribute('role', tone === 'bad' ? 'alert' : 'status');
   $('status').textContent = text;
 }
 
@@ -61,12 +74,17 @@ async function fillOperators(host, selectedId, selectedName) {
     $('operatorHint').textContent = t('operatorsFound', { n: choices.length, from, to });
   } catch (err) {
     $('operator').replaceChildren(new Option(t('loadFailed'), ''));
-    $('operatorHint').textContent = t('operatorsFailed', { host, error: err.message });
+    // Plain words, never the exception: what failed, then what to do.
+    const label = hostLabel(host);
+    const kind = errorKind(err?.message || err);
+    const why = kind === 'botCheck' ? t('errBotCheckOptions', { host: label }) : t(kind === 'network' ? 'errNetwork' : 'errServer', { host: label });
+    $('operatorHint').textContent = `${t('operatorsFailed', { host: label })} ${why}`;
   }
 }
 
 async function main() {
   const cfg = await loadSettings();
+  applyTheme(cfg.theme);
   t = makeT(resolveLocale(cfg.locale));
   $('locale').replaceChildren(
     new Option(t('localeAuto'), 'auto'),
@@ -79,6 +97,7 @@ async function main() {
   $('host').value = cfg.host;
   $('badge').value = cfg.badge;
   $('refreshMinutes').value = String(cfg.refreshMinutes);
+  $('theme').value = THEMES.includes(cfg.theme) ? cfg.theme : 'system';
   await fillOperators(cfg.host, cfg.operatorId, cfg.operatorName);
 
   $('locale').addEventListener('change', () => {
@@ -86,6 +105,9 @@ async function main() {
     applyStaticText();
     fillOperators(normalizeHost($('host').value), $('operator').value, '');
   });
+
+  // Previewed at once, like the language; stored on Save.
+  $('theme').addEventListener('change', () => applyTheme($('theme').value));
 
   $('reload').addEventListener('click', async () => {
     const host = normalizeHost($('host').value);
@@ -109,6 +131,7 @@ async function main() {
       operatorName: picked && $('operator').value ? (picked.dataset.name ?? picked.text) : '',
       badge: $('badge').value,
       refreshMinutes: Number($('refreshMinutes').value),
+      theme: $('theme').value,
     });
     say(t('saved'), 'ok');
     return undefined;

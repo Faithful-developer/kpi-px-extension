@@ -18,7 +18,7 @@
       <label class="field">
         <span class="field__label" data-i18n="fieldName">Your name</span>
         <select id="operator"><option value="">Loading operators…</option></select>
-        <span class="field__hint" id="operatorHint"></span>
+        <span class="field__hint" id="operatorHint" aria-live="polite"></span>
       </label>
 
       <label class="field">
@@ -42,6 +42,16 @@
       </label>
 
       <label class="field">
+        <span class="field__label" data-i18n="fieldTheme">Theme</span>
+        <select id="theme">
+          <option value="system" data-i18n="theme_system">System</option>
+          <option value="light" data-i18n="theme_light">Light</option>
+          <option value="dark" data-i18n="theme_dark">Dark</option>
+        </select>
+        <span class="field__hint" data-i18n="fieldThemeHint">System follows your operating system.</span>
+      </label>
+
+      <label class="field">
         <span class="field__label" data-i18n="fieldLanguage">Language</span>
         <select id="locale"></select>
         <span class="field__hint" data-i18n="fieldLanguageHint">Auto follows the browser.</span>
@@ -50,7 +60,7 @@
       <div class="row">
         <button class="btn btn--primary" id="save" type="button" data-i18n="save">Save</button>
         <button class="btn" id="reload" type="button" data-i18n="reloadOperators">Reload the list</button>
-        <span class="note" id="status"></span>
+        <span class="note" id="status" role="status" aria-live="polite"></span>
       </div>
     </section>
 

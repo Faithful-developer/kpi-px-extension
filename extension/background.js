@@ -5,7 +5,16 @@
 // A service worker is killed between alarms, so nothing may live in a module
 // variable across ticks — every entry point re-reads settings and cache from
 // chrome.storage.
-import { DEFAULTS, loadSettings, rangeFor, fetchSummary, fetchTickets, buildCard } from './lib/kpi.js';
+import {
+  DEFAULTS,
+  loadSettings,
+  rangeFor,
+  fetchSummary,
+  fetchTickets,
+  buildCard,
+  errorKind,
+  hostLabel,
+} from './lib/kpi.js';
 import { makeT, resolveLocale } from './lib/i18n.js';
 
 const ALARM = 'kpi-refresh';
@@ -71,7 +80,11 @@ export async function refresh(range = BADGE_RANGE, settings = null, { force = fa
     if (range === BADGE_RANGE && !prev?.summary) {
       await chrome.action.setBadgeText({ text: '!' });
       await chrome.action.setBadgeBackgroundColor({ color: '#a3352b' });
-      await chrome.action.setTitle({ title: `KPI px — ${entry.error}` });
+      // Same plain words as the popup, never the raw exception.
+      const t = makeT(resolveLocale(cfg.locale));
+      const kind = errorKind(entry.error);
+      const key = kind === 'botCheck' ? 'errBotCheck' : kind === 'network' ? 'errNetwork' : 'errServer';
+      await chrome.action.setTitle({ title: `KPI px — ${t(key, { host: hostLabel(cfg.host) })}` });
     }
     return entry;
   }

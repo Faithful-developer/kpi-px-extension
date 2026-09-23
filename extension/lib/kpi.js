@@ -50,7 +50,18 @@ export const DEFAULTS = {
   live: false,
   // 'board' | 'tickets' — which view the popup opens on.
   view: 'board',
+  // 'system' | 'light' | 'dark' — like the dashboard's theme toggle.
+  theme: 'system',
 };
+
+export const THEMES = ['system', 'light', 'dark'];
+
+// Pins the palette with data-theme on <html>, exactly as the dashboard does;
+// 'system' removes it so ui.css falls back to prefers-color-scheme.
+export function applyTheme(theme, root = document.documentElement) {
+  if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
+  else delete root.dataset.theme;
+}
 
 // The dashboard's own live cadence (src/config.js POLL_INTERVAL_MS).
 export const LIVE_POLL_MS = 30000;
@@ -132,6 +143,35 @@ export function rangeFor(key, now = new Date()) {
 // src/server/taskSummaryHandler.js — the dashboard's live mode depends on the
 // same exception) and silently ignores it for anything wider, so it is only
 // ever sent for today.
+// What kind of failure an error string describes, so the panel can say it in
+// plain words instead of printing the exception. Errors reach the popup as
+// STRINGS (the worker stores String(err.message) in the cache entry), so this
+// reads the text, which is why fetchSummary's messages name their cause.
+//   botCheck — the edge answered HTML where JSON was asked for
+//   network  — nothing came back, or the host/edge failed (5xx)
+//   server   — the app answered and refused (4xx, or its own error body)
+export function errorKind(error) {
+  const text = String(error ?? '');
+  if (/HTML, not JSON|bot check/i.test(text)) return 'botCheck';
+  if (
+    /HTTP 5\d\d|Failed to fetch|NetworkError|network|Load failed|timed? ?out|abort|offline|ECONN|ENOTFOUND|Could not establish connection|Receiving end/i.test(
+      text
+    )
+  ) {
+    return 'network';
+  }
+  return 'server';
+}
+
+// "auo.uz" out of "https://auo.uz/" — the name the error copy uses.
+export function hostLabel(host) {
+  try {
+    return new URL(String(host || DEFAULTS.host)).host;
+  } catch {
+    return String(host || DEFAULTS.host);
+  }
+}
+
 export async function fetchSummary({ host, from, to, refresh = false, signal } = {}) {
   const base = String(host || DEFAULTS.host).replace(/\/+$/, '');
   const url =

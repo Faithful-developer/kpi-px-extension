@@ -1,8 +1,15 @@
-/* The dashboard's bento tokens, cut down to what a 340 px panel uses.
+/* The dashboard's bento tokens, cut down to what a 400 px panel uses.
    Values are copied from src/theme.css — light is a warm mid-light grey with a
    terracotta accent (never bright: large neutral areas must not glare), dark is
-   near-black with a violet accent. The two blocks below are identical by
-   design; edit both. */
+   near-black with a violet accent.
+
+   Three blocks, like theme.css: light on :root, then ONE dark set applied both
+   by the OS preference (unless the Theme setting pins light) and by an explicit
+   data-theme="dark". The two dark blocks are identical by design; edit both.
+
+   Fonts: the dashboard self-hosts Inter; the extension deliberately does not
+   bundle it (≈300 KB for a popup) and uses the platform UI face, which is the
+   dashboard's own fallback stack. */
 :root {
   color-scheme: light dark;
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -22,20 +29,29 @@
   --accent-fill: #c4522f;
   --accent-text: #a83f1e;
   --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface-1));
-  --gold: #a8761e;
-  --danger-text: #a3352b;
+  /* Score bars on --surface-3: the raw accent is 3.0:1 there at best, so light
+     bars use the fill shade; dark's violet clears it as-is. */
+  --bar-fill: var(--accent-fill);
+  /* theme.css --status-warning-text: 5.07:1 on --surface-1, 4.64:1 on -2. */
+  --gold: #8a620e;
+  /* theme.css --status-critical-text. */
+  --danger-text: #b93232;
   --success-text: #006300;
 
   --radius: 18px;
   --radius-sm: 12px;
+  --radius-lg: 26px;
   --radius-pill: 999px;
   --shadow: 0 1px 2px rgba(20, 18, 14, 0.04), 0 10px 30px rgba(20, 18, 14, 0.06);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent);
   --display-weight: 600;
   --display-tracking: -0.03em;
 }
 
+:root[data-theme='light'] { color-scheme: light; }
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:where(:not([data-theme='light'])) {
     --page: #0b0b0f;
     --surface-1: #15151b;
     --surface-2: #1c1c24;
@@ -50,12 +66,37 @@
     --accent-fill: #6a5ae0;
     --accent-text: #a89cff;
     --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--surface-1));
-    --gold: #d2a24c;
-    --danger-text: #ff8a7a;
+    --bar-fill: var(--accent);
+    --gold: #fab219;
+    --danger-text: #dc6c6c;
     --success-text: #0ca30c;
 
     --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 2px 8px rgba(0, 0, 0, 0.5);
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --page: #0b0b0f;
+  --surface-1: #15151b;
+  --surface-2: #1c1c24;
+  --surface-3: #26262f;
+  --text-primary: #f2f1f7;
+  --text-secondary: #b6b4c2;
+  --text-muted: #9391a0;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --accent: #8b7cf6;
+  --accent-fill: #6a5ae0;
+  --accent-text: #a89cff;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--surface-1));
+  --bar-fill: var(--accent);
+  --gold: #fab219;
+  --danger-text: #dc6c6c;
+  --success-text: #0ca30c;
+
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 * { box-sizing: border-box; }
@@ -67,6 +108,19 @@ body {
   background: var(--page);
   font-size: 13px;
   line-height: 1.4;
+}
+
+/* One focus ring for every control, the dashboard's --focus-ring. :where()
+   keeps it at zero specificity, so a component that owns a box-shadow (your
+   own row's accent edge) has to restate it WITH the ring — see .op--mine. */
+:where(button, a, select, input, summary):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
 .popup {
@@ -82,15 +136,12 @@ body {
 /* ── Header (sticky) ────────────────────────────────────────────────── */
 .top {
   position: sticky; top: 0; z-index: 2;
-  background: var(--page); padding: 12px 14px 10px;
+  background: var(--page); padding: 12px 16px 8px;
   display: grid; gap: 10px;
 }
 .bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .bar__title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.bar__mark {
-  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--accent-text);
-}
+.bar__mark { font-size: 12px; font-weight: 600; color: var(--accent-text); }
 .bar__period {
   font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -100,8 +151,9 @@ body {
 .icon-btn {
   border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary);
   width: 28px; height: 28px; border-radius: var(--radius-pill); cursor: pointer;
-  font-size: 13px; line-height: 1; display: grid; place-items: center; padding: 0;
+  line-height: 1; display: grid; place-items: center; padding: 0;
 }
+.icon-btn svg { width: 16px; height: 16px; display: block; }
 .icon-btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
 .icon-btn[data-busy='1'] { opacity: 0.5; pointer-events: none; }
 
@@ -109,9 +161,9 @@ body {
    outline; on it fills and its dot pulses, so the mode is readable from the
    state of the button alone and not only from the word. */
 .live-btn {
-  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 9px;
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px 0 8px;
   border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary);
-  border-radius: var(--radius-pill); cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 600;
+  border-radius: var(--radius-pill); cursor: pointer; font: inherit; font-size: 12px; font-weight: 600;
 }
 .live-btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
 .live-btn__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
@@ -127,7 +179,7 @@ body {
 
 /* ── Range pills ────────────────────────────────────────────────────── */
 .pills {
-  display: flex; gap: 2px; padding: 3px;
+  display: flex; gap: 2px; padding: 4px;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill);
 }
 .pill {
@@ -141,7 +193,7 @@ body {
 .pill:disabled:hover { color: var(--text-secondary); }
 
 /* ── Content ────────────────────────────────────────────────────────── */
-#body { padding: 0 14px; display: grid; gap: 12px; align-content: start; }
+#body { padding: 0 16px; display: grid; gap: 12px; align-content: start; }
 /* A grid item's min-width is `auto`, i.e. its MIN-CONTENT — so one long word
    anywhere inside pushes the whole panel wider than the popup and Chrome adds
    a horizontal scrollbar. Measured: the tiles row alone forced 410 px inside a
@@ -152,10 +204,10 @@ body {
 .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .tile {
   background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm);
-  padding: 8px 9px 9px; display: grid; gap: 2px; align-content: start;
+  padding: 8px; display: grid; gap: 2px; align-content: start;
 }
 .tile__label {
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted);
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tile__value {
@@ -166,18 +218,18 @@ body {
 /* The sample/context line is PRINTED, not hidden in a title tooltip: a native
    tooltip in a 400 px panel covers the very thing it describes. */
 .tile__hint {
-  font-size: 9.5px; color: var(--text-muted); line-height: 1.2;
+  font-size: 11px; color: var(--text-muted); line-height: 1.2;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 /* ── Your own card ──────────────────────────────────────────────────── */
 .mine {
   background: var(--surface-1); border: 1px solid var(--border-strong);
-  border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 15px 14px;
+  border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 12px 16px;
   /* The one accent edge on the panel — it marks WHOSE card this is, which no
      number in it can say on its own. */
   border-left: 3px solid var(--accent);
-  display: grid; gap: 9px;
+  display: grid; gap: 8px;
 }
 .mine__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .mine__who { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; row-gap: 6px; }
@@ -185,36 +237,35 @@ body {
   font-size: 14px; font-weight: 600; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.mine__score { display: flex; align-items: baseline; gap: 5px; flex: none; }
+.mine__score { display: flex; align-items: baseline; gap: 4px; flex: none; }
 .mine__meta {
-  margin: 0; display: flex; flex-wrap: wrap; gap: 5px; line-height: 1.5;
+  margin: 0; display: flex; flex-wrap: wrap; gap: 0 12px; line-height: 1.5;
   font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums;
 }
 .mine__stat { color: var(--text-secondary); }
 
 .tag {
   background: var(--accent-soft); color: var(--accent-text); border-radius: var(--radius-pill);
-  padding: 3px 8px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+  padding: 4px 8px; font-size: 11px; font-weight: 600; line-height: 1;
 }
 .rank {
-  display: inline-flex; align-items: baseline; gap: 5px;
+  display: inline-flex; align-items: baseline; gap: 4px;
   background: var(--surface-2); color: var(--text-secondary);
-  border-radius: var(--radius-pill); padding: 3px 10px; font-size: 12px; font-weight: 600;
+  border-radius: var(--radius-pill); padding: 4px 12px; font-size: 12px; font-weight: 600;
 }
-.rank--gold { background: color-mix(in srgb, var(--gold) 16%, var(--surface-1)); color: var(--gold); }
+.rank--gold { background: color-mix(in srgb, var(--gold) 10%, var(--surface-1)); color: var(--gold); }
 .rank--jump { border: 0; font-family: inherit; cursor: pointer; }
 .rank--jump:hover { background: var(--surface-3); color: var(--text-primary); }
-.rank__go { opacity: 0.5; font-weight: 400; }
 .rank__of { color: var(--text-muted); font-weight: 400; }
 .score {
-  font-size: 28px; font-weight: var(--display-weight); letter-spacing: var(--display-tracking);
+  font-size: 40px; font-weight: var(--display-weight); letter-spacing: var(--display-tracking);
   line-height: 1; font-variant-numeric: tabular-nums;
 }
 .score__unit { font-size: 12px; color: var(--text-muted); }
 
 /* ── Criteria ───────────────────────────────────────────────────────── */
-.crit { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; }
-.crit__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; align-items: baseline; }
+.crit { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.crit__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; }
 .crit__label { color: var(--text-secondary); font-size: 12px; }
 .crit__value { font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
 .crit__bar {
@@ -224,18 +275,24 @@ body {
 /* display:block is load-bearing — the track is blockified for free as a grid
    item, but the fill is a plain span inside it, and width/height on an inline
    box do nothing: the bar renders as an empty groove. */
-.crit__fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
-.crit__meta { grid-column: 1 / -1; font-size: 10.5px; color: var(--text-muted); margin-top: -2px; }
-.crit--na { opacity: 0.55; }
-.crit--na .crit__fill { background: var(--text-muted); }
+.crit__fill { display: block; height: 100%; border-radius: inherit; background: var(--bar-fill); }
+.crit__meta {
+  grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 12px;
+  font-size: 11px; color: var(--text-muted); margin-top: -2px;
+}
+/* A criterion with no data is dimmed on the BAR only: fading the whole row took
+   its muted text to 2.4:1. */
+.crit--na .crit__fill { background: var(--text-muted); opacity: 0.55; }
 
 /* ── The board ──────────────────────────────────────────────────────── */
-.board { display: grid; gap: 7px; }
+.board { display: grid; gap: 8px; }
 .board__head {
-  display: flex; justify-content: space-between; align-items: baseline;
-  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted);
-  padding: 0 12px 1px;
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  font-size: 12px; font-weight: 600; color: var(--text-muted);
+  padding: 0 12px;
 }
+.board__title { display: flex; gap: 8px; align-items: baseline; }
+.count { font-weight: 400; font-variant-numeric: tabular-nums; }
 
 .op { border-radius: var(--radius-sm); }
 .op__line {
@@ -244,7 +301,7 @@ body {
      dark-mode machine the score rendered white on the light surface. */
   width: 100%; text-align: left; font: inherit; color: var(--text-primary); cursor: pointer;
   background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm);
-  padding: 11px 12px 12px;
+  padding: 12px;
   display: grid; grid-template-columns: 22px minmax(0, 1fr) auto;
   column-gap: 10px; row-gap: 8px; align-items: center;
 }
@@ -269,19 +326,21 @@ body {
 /* One hue for every operator. The bar encodes the score, and the score already
    encodes the rank — a per-place colour would add nothing and would repaint
    the survivors every time the range changes the field. */
-.op__fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.op__fill { display: block; height: 100%; border-radius: inherit; background: var(--bar-fill); }
 .op__meta {
-  grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 5px; margin-top: -3px;
-  font-size: 10.5px; line-height: 1.4; color: var(--text-muted); font-variant-numeric: tabular-nums;
+  grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 0 12px; margin-top: -4px;
+  font-size: 11px; line-height: 1.4; color: var(--text-muted); font-variant-numeric: tabular-nums;
 }
-.op__dot { opacity: 0.45; }
 .op__flag { color: var(--gold); }
+/* Gold on the accent tint drops under 4.5:1; your own row's flag is accent ink. */
+.op--mine .op__flag { color: var(--accent-text); }
 
 .op--mine > .op__line {
   background: var(--accent-soft); border-color: transparent;
   box-shadow: inset 3px 0 0 var(--accent);
 }
 .op--mine > .op__line:hover { background: var(--accent-soft); }
+.op--mine > .op__line:focus-visible { box-shadow: inset 3px 0 0 var(--accent), var(--focus-ring); }
 .op--open > .op__line { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .op--open > .crit {
   padding: 12px;
@@ -297,7 +356,7 @@ body {
 .tabs { display: flex; gap: 2px; padding: 2px; background: var(--surface-2); border-radius: var(--radius-pill); }
 .tab {
   flex: 1; border: 0; background: transparent; color: var(--text-secondary);
-  border-radius: var(--radius-pill); padding: 5px 0; font: inherit; font-size: 11.5px; cursor: pointer;
+  border-radius: var(--radius-pill); padding: 4px 0; font: inherit; font-size: 12px; cursor: pointer;
 }
 .tab:hover { color: var(--text-primary); }
 .tab[aria-pressed='true'] { background: var(--surface-1); color: var(--text-primary); font-weight: 600; }
@@ -305,15 +364,16 @@ body {
 .tickets { display: grid; gap: 8px; }
 .tickets__head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-  padding: 0 2px; font-size: 11.5px; color: var(--text-muted);
+  padding: 0 4px; font-size: 12px; color: var(--text-muted);
 }
-.tickets__title { font-weight: 600; color: var(--text-primary); }
-.tickets__sum { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tickets__title { display: flex; gap: 8px; align-items: baseline; font-weight: 600; color: var(--text-primary); }
+.tickets__title .count { color: var(--text-muted); }
+.tickets__sum { display: flex; gap: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 /* The list now sits straight on the page rather than inside a panel, so a
    ticket is a surface-1 card with a hairline, like a board row. */
 .tk {
-  display: grid; gap: 4px; padding: 8px 10px; min-width: 0;
+  display: grid; gap: 4px; padding: 8px 12px; min-width: 0;
   background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
 .tk__top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -326,13 +386,13 @@ body {
 .tk__chips { display: flex; gap: 4px; flex: none; }
 .chip {
   background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill);
-  padding: 1px 7px; font-size: 10.5px; color: var(--text-secondary);
+  padding: 0 8px; font-size: 11px; line-height: 20px; color: var(--text-secondary);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .chip--ai { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); font-weight: 600; }
 .tk__meta {
-  display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; min-width: 0;
-  font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+  display: flex; flex-wrap: wrap; gap: 0 12px; align-items: baseline; min-width: 0;
+  font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums;
 }
 /* Status colour always arrives with its own glyph and word (✓ SLA / ✗ SLA),
    so the verdict survives a colourblind reader and a greyscale screenshot. */
@@ -340,13 +400,13 @@ body {
 .tk__sla--miss { color: var(--danger-text); }
 .tk__state { color: var(--gold); }
 .tk__cat {
-  min-width: 0; font-size: 10.5px; color: var(--text-muted);
+  min-width: 0; font-size: 11px; color: var(--text-muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tk-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
 /* ── Notes, prompts, footer ─────────────────────────────────────────── */
-.note { margin: 0; color: var(--text-muted); font-size: 11.5px; line-height: 1.45; }
+.note { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
 .note--warn { color: var(--gold); }
 .note--bad { color: var(--danger-text); }
 .note--ok { color: var(--success-text); }
@@ -354,36 +414,42 @@ body {
 .prompt {
   display: flex; align-items: center; gap: 10px;
   background: var(--surface-1); border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm); padding: 11px 12px;
+  border-radius: var(--radius-sm); padding: 12px;
 }
 .prompt .note { flex: 1; }
+/* The no-data failure: what went wrong, then the two ways out. */
+.fail { display: grid; gap: 12px; justify-items: start; }
+.fail__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .foot {
   position: sticky; bottom: 0; z-index: 2;
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
   font-size: 11px; color: var(--text-muted);
   background: var(--page); border-top: 1px solid var(--border);
-  padding: 9px 14px 11px; margin-top: 12px;
+  padding: 8px 16px 12px; margin-top: 12px;
 }
+.foot__stamp { display: flex; gap: 8px; font-variant-numeric: tabular-nums; }
+/* Older than two refresh intervals: the worker has been failing quietly. */
+.foot__stamp--stale { color: var(--gold); font-weight: 600; }
 .foot a { color: var(--accent-text); text-decoration: none; }
 .foot a:hover { text-decoration: underline; }
 
 .btn {
   border: 1px solid var(--border-strong); background: var(--surface-1); color: var(--text-primary);
-  border-radius: var(--radius-pill); padding: 7px 14px; font-size: 12px; cursor: pointer;
-  font-family: inherit;
+  border-radius: var(--radius-pill); padding: 8px 16px; font-size: 12px; cursor: pointer;
+  font-family: inherit; text-decoration: none; display: inline-block; line-height: 1.2;
 }
 .btn--primary { background: var(--accent-fill); border-color: transparent; color: #fff; font-weight: 600; }
-.btn--sm { padding: 6px 13px; font-size: 11.5px; }
+.btn--sm { padding: 4px 12px; font-size: 12px; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 
 /* ── Options page ───────────────────────────────────────────────────── */
 .options { max-width: 520px; margin: 0 auto; padding: 28px 20px 48px; font-size: 14px; }
 .options h1 { font-size: 20px; font-weight: var(--display-weight); letter-spacing: var(--display-tracking); margin: 0 0 16px; }
 .panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; display: grid; gap: 16px; }
-.field { display: grid; gap: 5px; }
+.field { display: grid; gap: 4px; }
 .field__label { font-weight: 600; font-size: 13px; }
-.field__hint { color: var(--text-muted); font-size: 11.5px; }
+.field__hint { color: var(--text-muted); font-size: 12px; }
 .field input, .field select {
   font: inherit; font-size: 13px; color: var(--text-primary); background: var(--surface-2);
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 8px 10px; width: 100%;
