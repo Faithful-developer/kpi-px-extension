@@ -16,6 +16,7 @@ import {
   hostLabel,
 } from './lib/kpi.js';
 import { makeT, resolveLocale } from './lib/i18n.js';
+import { UPDATE_KEY, CHECK_EVERY_MS, fetchLatestVersion, newerVersion } from './lib/update.js';
 
 const ALARM = 'kpi-refresh';
 
@@ -53,7 +54,29 @@ async function paintBadge(card, mode, t) {
   const { text, color, title } = badgeFor(card, mode, t);
   await chrome.action.setBadgeText({ text });
   await chrome.action.setBadgeBackgroundColor({ color });
-  await chrome.action.setTitle({ title });
+  // The badge's four characters belong to the score; a pending update rides
+  // on the tooltip instead, and the popup carries the real notice.
+  const stored = await chrome.storage.local.get(UPDATE_KEY);
+  const next = newerVersion(stored[UPDATE_KEY], chrome.runtime.getManifest().version);
+  await chrome.action.setTitle({ title: next ? `${title} · ${t('badgeUpdate', { v: next })}` : title });
+}
+
+// Is a newer version published? At most once per CHECK_EVERY_MS, whatever
+// calls it — the alarm fires every few minutes and must not turn into a
+// request every few minutes. A failed check keeps the last known answer and
+// still counts as a check, so an offline laptop does not retry on every tick.
+export async function checkUpdate({ force = false } = {}) {
+  const stored = await chrome.storage.local.get(UPDATE_KEY);
+  const prev = stored[UPDATE_KEY] || null;
+  if (!force && prev?.checkedAt && Date.now() - prev.checkedAt < CHECK_EVERY_MS) return prev;
+  let entry;
+  try {
+    entry = { checkedAt: Date.now(), latest: await fetchLatestVersion(), error: null };
+  } catch (err) {
+    entry = { checkedAt: Date.now(), latest: prev?.latest || null, error: String(err?.message || err) };
+  }
+  await chrome.storage.local.set({ [UPDATE_KEY]: entry });
+  return entry;
 }
 
 // Fetch one range and cache it. Returns the cache entry so callers can paint
@@ -120,18 +143,23 @@ async function arm(settings = null) {
   await chrome.alarms.create(ALARM, { periodInMinutes: minutes, delayInMinutes: minutes });
 }
 
+// Installing or reloading the extension (which is how an unpacked update
+// lands) re-checks at once, so a stale "update available" clears right away.
 chrome.runtime.onInstalled.addListener(async () => {
   await arm();
+  await checkUpdate({ force: true });
   await refresh();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   await arm();
+  await checkUpdate();
   await refresh();
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== ALARM) return;
+  await checkUpdate();
   await refresh();
 });
 
@@ -154,6 +182,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg?.type === 'tickets') {
     refreshTickets(msg.range || BADGE_RANGE).then(sendResponse);
+    return true;
+  }
+  if (msg?.type === 'update') {
+    checkUpdate().then(sendResponse);
     return true;
   }
   return undefined;

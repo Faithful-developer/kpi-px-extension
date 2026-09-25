@@ -24,6 +24,7 @@ import {
   rangeFor,
 } from './lib/kpi.js';
 import { makeT, resolveLocale } from './lib/i18n.js';
+import { UPDATE_KEY, RELEASES_URL, newerVersion } from './lib/update.js';
 
 const $ = (id) => document.getElementById(id);
 const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
@@ -56,12 +57,19 @@ let openId = null;
 let view = 'board';
 let shown = PAGE;
 let ticketEntry = null;
+// «Only AI < 60», like the dashboard drawer's toggle. The server judges each
+// row (`aiLow`, the same isLowAiScore behind aiLowCount), so the popup never
+// holds its own copy of the threshold. Kept across range switches; it simply
+// hides on a range with no such ticket.
+let aiLowOnly = false;
 // Live mode: the range is pinned to today and re-crawled every LIVE_POLL_MS
 // while the popup is open. The popup's timer dies with the popup, which is the
 // point — a closed popup goes back to the worker's normal alarm cadence.
 let live = false;
 let liveTimer = null;
 let ticking = false;
+// The worker's last "is a newer version published" answer (lib/update.js).
+let updateEntry = null;
 
 // The range actually on screen: live mode overrides the picked one without
 // forgetting it, so switching live off lands back where the viewer was.
@@ -417,17 +425,37 @@ function renderTickets() {
     return wrap;
   }
 
+  // Counted over the LOADED rows: the number labels a button that filters
+  // exactly this list. Shown only when there is at least one such ticket.
+  const lowCount = all.filter((x) => x.aiLow === true).length;
+  const lowActive = aiLowOnly && lowCount > 0;
+  if (lowCount > 0) {
+    const toggle = el('button', 'ailow');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-pressed', String(lowActive));
+    toggle.append(el('span', null, t('ticketsAiLow')), el('span', 'ailow__n', num(lowCount)));
+    toggle.addEventListener('click', () => {
+      aiLowOnly = !lowActive;
+      shown = PAGE;
+      repaint();
+    });
+    wrap.append(toggle);
+  }
+  const rows = lowActive ? all.filter((x) => x.aiLow === true) : all;
+
   const multiDay = ticketEntry.from !== ticketEntry.to;
   const list = el('ul', 'tk-list');
-  for (const ticket of all.slice(0, shown)) list.append(renderTicket(ticket, multiDay));
+  for (const ticket of rows.slice(0, shown)) list.append(renderTicket(ticket, multiDay));
   wrap.append(list);
 
-  const total = ticketEntry.meta?.totalTickets ?? all.length;
-  const visible = Math.min(shown, all.length);
-  if (visible < all.length || total > all.length) {
+  // Filtered, the total is the filtered count — meta.totalTickets describes
+  // the whole list, not the low-AI slice of it.
+  const total = lowActive ? rows.length : ticketEntry.meta?.totalTickets ?? all.length;
+  const visible = Math.min(shown, rows.length);
+  if (visible < rows.length || total > rows.length) {
     const foot = el('div', 'tk-foot');
     foot.append(el('span', 'note', t('ticketsShown', { n: num(visible), total: num(total) })));
-    if (visible < all.length) {
+    if (visible < rows.length) {
       const more = el('button', 'btn btn--sm', t('ticketsMore'));
       more.type = 'button';
       more.addEventListener('click', () => {
@@ -506,6 +534,9 @@ function paint(entry) {
     else parts.push(note(t('emptyBoard')));
   }
   if (entry.error) parts.push(note(errorText(entry.error, entry.at), 'bad'));
+  // First, above your own card: it is the one notice that needs you to act.
+  const update = renderUpdate();
+  if (update) parts.unshift(update);
 
   $('body').replaceChildren(...parts);
   renderStamp(entry.at);
@@ -537,6 +568,28 @@ function renderFailure(error, from, to) {
   open.rel = 'noreferrer';
   actions.append(retry, open);
   box.append(actions);
+  return box;
+}
+
+// A newer version is published. Chrome never updates an unpacked extension,
+// so this is the only way anyone on an old build hears about it: what is out,
+// what they have, where to get it, and the two steps that install it.
+function renderUpdate() {
+  const installed = chrome.runtime.getManifest().version;
+  const next = newerVersion(updateEntry, installed);
+  if (!next) return null;
+  const box = el('section', 'update');
+  box.setAttribute('role', 'status');
+  const text = el('div', 'update__text');
+  text.append(
+    el('strong', 'update__title', t('updateTitle', { v: next })),
+    el('span', 'update__how', t('updateHow', { current: installed }))
+  );
+  const link = el('a', 'btn btn--primary btn--sm', t('updateAction'));
+  link.href = RELEASES_URL;
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  box.append(text, link);
   return box;
 }
 
@@ -686,6 +739,7 @@ async function main() {
   renderLive();
   renderRanges();
   renderViews();
+  updateEntry = (await chrome.storage.local.get(UPDATE_KEY))[UPDATE_KEY] || null;
   paint(await readCache(active())); // instant, from the last background refresh
   $('refresh').addEventListener('click', () => (live ? liveTick() : refresh().then(() => view === 'tickets' && loadTickets())));
   $('settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
@@ -698,6 +752,17 @@ async function main() {
     await refresh();
     if (view === 'tickets') await loadTickets();
   }
+  // After the board, never ahead of it. The worker re-checks at most every
+  // few hours; this only repaints when its answer changed.
+  chrome.runtime
+    .sendMessage({ type: 'update' })
+    .then((next) => {
+      if (next && next.latest !== updateEntry?.latest) {
+        updateEntry = next;
+        repaint();
+      }
+    })
+    .catch(() => {});
 }
 
 main();

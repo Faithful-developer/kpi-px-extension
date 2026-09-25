@@ -369,6 +369,20 @@ body {
 .tickets__title { display: flex; gap: 8px; align-items: baseline; font-weight: 600; color: var(--text-primary); }
 .tickets__title .count { color: var(--text-muted); }
 .tickets__sum { display: flex; gap: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* «Only AI < 60» — the dashboard drawer's toggle: quiet until pressed, then
+   the danger tone, with its count always printed. */
+.ailow {
+  justify-self: start; display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: transparent; font: inherit; font-size: 11px; font-weight: 600;
+  color: var(--text-muted); cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.ailow:hover { color: var(--text-primary); }
+.ailow[aria-pressed='true'] {
+  border-color: var(--danger-text);
+  background: color-mix(in srgb, var(--danger-text) 10%, transparent);
+  color: var(--danger-text);
+}
 .tk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 /* The list now sits straight on the page rather than inside a panel, so a
    ticket is a surface-1 card with a hairline, like a board row. */
@@ -404,6 +418,18 @@ body {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tk-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* ── Update notice ──────────────────────────────────────────────────── */
+/* The accent, not the danger tone: nothing is broken, there is just
+   something newer to install. */
+.update {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--accent-soft); border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.update__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.update__title { font-size: 12px; color: var(--accent-text); }
+.update__how { font-size: 11px; line-height: 1.4; color: var(--text-secondary); }
+.update .btn { flex: none; }
 
 /* ── Notes, prompts, footer ─────────────────────────────────────────── */
 .note { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
